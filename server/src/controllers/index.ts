@@ -12,6 +12,7 @@ import { ConfigAdminController } from 'src/controllers/config-admin.controller.j
 import { ConfigPublicController } from 'src/controllers/config-public.controller.js';
 import { ConfigUserController } from 'src/controllers/config-user.controller.js';
 import { DatabaseBackupController } from 'src/controllers/database-backup.controller.js';
+import { DeviceMountController } from 'src/controllers/device-mount.controller.js';
 import { DownloadController } from 'src/controllers/download.controller.js';
 import { DuplicateController } from 'src/controllers/duplicate.controller.js';
 import { FaceController } from 'src/controllers/face.controller.js';
@@ -60,6 +61,7 @@ export const controllers = [
   ConfigAdminController,
   ConfigPublicController,
   DatabaseBackupController,
+  DeviceMountController,
   DownloadController,
   DuplicateController,
   FaceController,

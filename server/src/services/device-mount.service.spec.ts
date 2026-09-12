@@ -12,11 +12,19 @@ const baseMount = {
   identityMethod: DeviceIdentityMethod.FilesystemSerial,
   identityConfidence: DeviceIdentityConfidence.High,
   lastKnownPath: '/mnt/external/old-mount',
+  pendingPath: null,
   lastSeenAt: new Date('2026-09-01T00:00:00Z'),
   assetCount: 42,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-09-01T00:00:00Z'),
 };
+
+/** Makes DeviceResolverService's strategies 1-3 fail, forcing it to fall through to the content-fingerprint one. */
+function noHardwareSignal(mocks: ReturnType<typeof newTestService<DeviceMountService>>['mocks']) {
+  mocks.volumeInfo.getFilesystemSerial.mockResolvedValue(null);
+  mocks.volumeInfo.getUsbHardwareSerial.mockResolvedValue(null);
+  mocks.volumeInfo.readMarkerFile.mockResolvedValue(null);
+}
 
 describe(DeviceMountService.name, () => {
   describe('handleReconcile', () => {
@@ -243,5 +251,187 @@ describe(DeviceMountService.name, () => {
       '/mnt/external/old-mount',
       '/mnt/external/new-mount',
     );
+  });
+
+  describe('content fingerprint / "ask, don\'t guess" (work item 5)', () => {
+    it('parks a high-ratio content-fingerprint match as pending instead of relinking it', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(baseMount);
+      mocks.storage.stat.mockRejectedValue(new Error('ENOENT'));
+      noHardwareSignal(mocks);
+      mocks.library.get.mockResolvedValue({
+        id: LIBRARY_ID,
+        ownerId: 'owner-1',
+        exclusionPatterns: [],
+        importPaths: [],
+      } as any);
+      mocks.storage.crawl.mockResolvedValue([
+        '/mnt/external/new-mount/a.jpg',
+        '/mnt/external/new-mount/b.jpg',
+        '/mnt/external/new-mount/c.jpg',
+        '/mnt/external/new-mount/d.jpg',
+      ]);
+      mocks.crypto.hashFile.mockResolvedValue(Buffer.from('x'));
+      mocks.asset.getByChecksum.mockResolvedValue({ id: 'asset-1' } as any); // every sampled file "matches"
+
+      const result = await sut.reconcilePath(LIBRARY_ID, ['/mnt/external/new-mount']);
+
+      expect(result).toEqual({
+        reason: 'needs-confirmation',
+        relinked: false,
+        oldPath: '/mnt/external/old-mount',
+        newPath: '/mnt/external/new-mount',
+      });
+      expect(mocks.deviceMount.setPendingMatch).toHaveBeenCalledWith(baseMount.id, '/mnt/external/new-mount');
+      expect(mocks.deviceMount.upsert).not.toHaveBeenCalled();
+      expect(mocks.library.update).not.toHaveBeenCalled();
+    });
+
+    it('does not park a match when the sampled ratio is below the threshold', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(baseMount);
+      mocks.storage.stat.mockRejectedValue(new Error('ENOENT'));
+      noHardwareSignal(mocks);
+      mocks.library.get.mockResolvedValue({
+        id: LIBRARY_ID,
+        ownerId: 'owner-1',
+        exclusionPatterns: [],
+        importPaths: [],
+      } as any);
+      mocks.storage.crawl.mockResolvedValue(['/mnt/external/new-mount/a.jpg']);
+      mocks.crypto.hashFile.mockResolvedValue(Buffer.from('x'));
+      mocks.asset.getByChecksum.mockResolvedValue(undefined); // nothing matches
+
+      const result = await sut.reconcilePath(LIBRARY_ID, ['/mnt/external/new-mount']);
+
+      expect(result).toEqual({ reason: 'no-match-found', relinked: false });
+      expect(mocks.deviceMount.setPendingMatch).not.toHaveBeenCalled();
+    });
+
+    it('confirms a pending match by re-resolving it, then relinks and clears the pending path', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      const pendingMount = { ...baseMount, pendingPath: '/mnt/external/pending-mount' };
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(pendingMount);
+      noHardwareSignal(mocks);
+      mocks.library.get.mockResolvedValue({
+        id: LIBRARY_ID,
+        ownerId: 'owner-1',
+        exclusionPatterns: [],
+        importPaths: ['/mnt/external/old-mount/Photos'],
+      } as any);
+      mocks.storage.crawl.mockResolvedValue(['/mnt/external/pending-mount/a.jpg']);
+      mocks.crypto.hashFile.mockResolvedValue(Buffer.from('x'));
+      mocks.asset.getByChecksum.mockResolvedValue({ id: 'asset-1' } as any);
+      mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(undefined);
+
+      const result = await sut.confirmPendingMatch(LIBRARY_ID);
+
+      expect(result).toEqual({
+        reason: 'relinked',
+        relinked: true,
+        oldPath: '/mnt/external/old-mount',
+        newPath: '/mnt/external/pending-mount',
+      });
+      expect(mocks.deviceMount.clearPendingMatch).toHaveBeenCalledWith(pendingMount.id);
+      expect(mocks.asset.rewriteOriginalPathPrefix).toHaveBeenCalledWith(
+        LIBRARY_ID,
+        '/mnt/external/old-mount',
+        '/mnt/external/pending-mount',
+      );
+    });
+
+    it('clears a pending match without relinking when it no longer re-resolves', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      const pendingMount = { ...baseMount, pendingPath: '/mnt/external/pending-mount' };
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(pendingMount);
+      noHardwareSignal(mocks);
+      mocks.library.get.mockResolvedValue({
+        id: LIBRARY_ID,
+        ownerId: 'owner-1',
+        exclusionPatterns: [],
+        importPaths: [],
+      } as any);
+      mocks.storage.crawl.mockResolvedValue([]); // drive no longer has anything there
+
+      const result = await sut.confirmPendingMatch(LIBRARY_ID);
+
+      expect(result).toEqual({ reason: 'no-match-found', relinked: false });
+      expect(mocks.deviceMount.clearPendingMatch).toHaveBeenCalledWith(pendingMount.id);
+      expect(mocks.asset.rewriteOriginalPathPrefix).not.toHaveBeenCalled();
+    });
+
+    it('reports no pending match to confirm when there is none', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(baseMount); // pendingPath: null
+
+      await expect(sut.confirmPendingMatch(LIBRARY_ID)).resolves.toEqual({
+        reason: 'no-pending-match',
+        relinked: false,
+      });
+      expect(mocks.deviceMount.clearPendingMatch).not.toHaveBeenCalled();
+    });
+
+    it('rejects a pending match by clearing it without relinking', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      const pendingMount = { ...baseMount, pendingPath: '/mnt/external/pending-mount' };
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(pendingMount);
+
+      const result = await sut.rejectPendingMatch(LIBRARY_ID);
+
+      expect(result).toEqual({ reason: 'no-match-found', relinked: false });
+      expect(mocks.deviceMount.clearPendingMatch).toHaveBeenCalledWith(pendingMount.id);
+      expect(mocks.asset.rewriteOriginalPathPrefix).not.toHaveBeenCalled();
+    });
+
+    it('reports no pending match to reject when there is none', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(baseMount);
+
+      await expect(sut.rejectPendingMatch(LIBRARY_ID)).resolves.toEqual({
+        reason: 'no-pending-match',
+        relinked: false,
+      });
+      expect(mocks.deviceMount.clearPendingMatch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getStatus (work item 6)', () => {
+    it('returns undefined for a library with no tracked device', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(undefined);
+
+      await expect(sut.getStatus(LIBRARY_ID)).resolves.toBeUndefined();
+    });
+
+    it('reports "connected" when the last-known path exists', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(baseMount);
+      mocks.storage.stat.mockResolvedValue({} as any);
+
+      const status = await sut.getStatus(LIBRARY_ID);
+
+      expect(status).toMatchObject({ status: 'connected', volumeId: baseMount.volumeId, pendingPath: null });
+    });
+
+    it('reports "offline" when the last-known path is missing and nothing is pending', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(baseMount);
+      mocks.storage.stat.mockRejectedValue(new Error('ENOENT'));
+
+      const status = await sut.getStatus(LIBRARY_ID);
+
+      expect(status).toMatchObject({ status: 'offline' });
+    });
+
+    it('reports "pending-confirmation" whenever a pending path is set, regardless of disk state', async () => {
+      const { sut, mocks } = newTestService(DeviceMountService);
+      const pendingMount = { ...baseMount, pendingPath: '/mnt/external/pending-mount' };
+      mocks.deviceMount.getByLibraryId.mockResolvedValue(pendingMount);
+      mocks.storage.stat.mockRejectedValue(new Error('ENOENT'));
+
+      const status = await sut.getStatus(LIBRARY_ID);
+
+      expect(status).toMatchObject({ status: 'pending-confirmation', pendingPath: '/mnt/external/pending-mount' });
+    });
   });
 });

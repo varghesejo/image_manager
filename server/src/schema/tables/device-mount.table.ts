@@ -48,6 +48,15 @@ export class DeviceMountTable {
   @Column()
   lastKnownPath!: string;
 
+  /**
+   * Work item 5 ("ask, don't guess"): set when reconcile finds a candidate path that resolves to this volume only
+   * via the low-confidence content-fingerprint strategy - too weak to relink automatically, so it waits here for
+   * an explicit confirm/reject from the admin UI (DeviceMountService.confirmPendingMatch/rejectPendingMatch).
+   * Null whenever there's nothing awaiting confirmation.
+   */
+  @Column({ nullable: true })
+  pendingPath!: string | null;
+
   @Column({ type: 'timestamp with time zone' })
   lastSeenAt!: Timestamp;
 
