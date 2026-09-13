@@ -1806,6 +1806,24 @@ export type UpdateLibraryDto = {
     /** Library name */
     name?: string;
 };
+export type DeviceMountStatusResponseDto = {
+    /** Cached asset count for this library, if known */
+    assetCount: number | null;
+    /** Confidence of the last identification (e.g. high) */
+    identityConfidence: string;
+    /** How the volume was last identified (e.g. filesystem-serial) */
+    identityMethod: string;
+    /** Where the drive was last mounted */
+    lastKnownPath: string;
+    /** When the drive was last seen */
+    lastSeenAt: string;
+    /** A low-confidence candidate path awaiting confirmation, if any */
+    pendingPath: string | null;
+    /** Current drive status */
+    status: Status;
+    /** Resolved, OS-independent volume identity */
+    volumeId: string;
+};
 export type LibraryStatsResponseDto = {
     /** Number of photos */
     photos: number;
@@ -5513,6 +5531,41 @@ export function updateLibrary({ id, updateLibraryDto }: {
     })));
 }
 /**
+ * Retrieve device mount status
+ */
+export function getDeviceMountStatus({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: DeviceMountStatusResponseDto;
+    }>(`/libraries/${encodeURIComponent(id)}/device-mount`, {
+        ...opts
+    }));
+}
+/**
+ * Confirm a pending device match
+ */
+export function confirmDeviceMount({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/libraries/${encodeURIComponent(id)}/device-mount/confirm`, {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
+ * Reject a pending device match
+ */
+export function rejectDeviceMount({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/libraries/${encodeURIComponent(id)}/device-mount/reject`, {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
  * Scan a library
  */
 export function scanLibrary({ id }: {
@@ -8170,6 +8223,11 @@ export enum QueueCommand {
     Empty = "empty",
     ClearFailed = "clear-failed"
 }
+export enum Status {
+    Connected = "connected",
+    Offline = "offline",
+    PendingConfirmation = "pending-confirmation"
+}
 export enum MemorySearchOrder {
     Asc = "asc",
     Desc = "desc",
@@ -8228,6 +8286,7 @@ export enum JobName {
     LibrarySyncFilesQueueAll = "LibrarySyncFilesQueueAll",
     LibrarySyncFiles = "LibrarySyncFiles",
     LibraryScanQueueAll = "LibraryScanQueueAll",
+    DeviceMountReconcile = "DeviceMountReconcile",
     HlsSessionCleanup = "HlsSessionCleanup",
     MemoryCleanup = "MemoryCleanup",
     MemoryGenerate = "MemoryGenerate",

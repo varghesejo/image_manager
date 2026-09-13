@@ -7716,6 +7716,151 @@
         "x-immich-state": "Deprecated"
       }
     },
+    "/libraries/{id}/device-mount": {
+      "get": {
+        "description": "Retrieve the tracked removable drive's status for an external library: connected, offline, or awaiting confirmation of a low-confidence match.",
+        "operationId": "getDeviceMountStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceMountStatusResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve device mount status",
+        "tags": [
+          "Libraries"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.2.0",
+            "state": "Added"
+          }
+        ],
+        "x-immich-permission": "library.read"
+      }
+    },
+    "/libraries/{id}/device-mount/confirm": {
+      "post": {
+        "description": "Confirm a low-confidence candidate match found by reconcile, relinking the library to it. See the 'pending-confirmation' status from the device mount status endpoint.",
+        "operationId": "confirmDeviceMount",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Confirm a pending device match",
+        "tags": [
+          "Libraries"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.2.0",
+            "state": "Added"
+          }
+        ],
+        "x-immich-permission": "library.update"
+      }
+    },
+    "/libraries/{id}/device-mount/reject": {
+      "post": {
+        "description": "Reject a low-confidence candidate match found by reconcile, without relinking anything.",
+        "operationId": "rejectDeviceMount",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Reject a pending device match",
+        "tags": [
+          "Libraries"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.2.0",
+            "state": "Added"
+          }
+        ],
+        "x-immich-permission": "library.update"
+      }
+    },
     "/libraries/{id}/scan": {
       "post": {
         "description": "Queue a scan for the external library to find and import new assets.",
@@ -21773,6 +21918,65 @@
         },
         "type": "object"
       },
+      "DeviceMountStatusResponseDto": {
+        "properties": {
+          "assetCount": {
+            "description": "Cached asset count for this library, if known",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          },
+          "identityConfidence": {
+            "description": "Confidence of the last identification (e.g. high)",
+            "type": "string"
+          },
+          "identityMethod": {
+            "description": "How the volume was last identified (e.g. filesystem-serial)",
+            "type": "string"
+          },
+          "lastKnownPath": {
+            "description": "Where the drive was last mounted",
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "description": "When the drive was last seen",
+            "example": "2024-01-01T00:00:00.000Z",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          },
+          "pendingPath": {
+            "description": "A low-confidence candidate path awaiting confirmation, if any",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "description": "Current drive status",
+            "enum": [
+              "connected",
+              "offline",
+              "pending-confirmation"
+            ],
+            "type": "string"
+          },
+          "volumeId": {
+            "description": "Resolved, OS-independent volume identity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetCount",
+          "identityConfidence",
+          "identityMethod",
+          "lastKnownPath",
+          "lastSeenAt",
+          "pendingPath",
+          "status",
+          "volumeId"
+        ],
+        "type": "object"
+      },
       "DownloadArchiveDto": {
         "properties": {
           "archiveName": {
@@ -22475,6 +22679,7 @@
           "LibrarySyncFilesQueueAll",
           "LibrarySyncFiles",
           "LibraryScanQueueAll",
+          "DeviceMountReconcile",
           "HlsSessionCleanup",
           "MemoryCleanup",
           "MemoryGenerate",
