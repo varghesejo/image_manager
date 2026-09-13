@@ -62,4 +62,26 @@ export class DeviceMountRepository {
   async delete(id: string) {
     await this.db.deleteFrom('device_mount').where('id', '=', id).execute();
   }
+
+  /** Records a low-confidence candidate match awaiting explicit user confirmation (see DeviceMountTable.pendingPath). */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
+  setPendingMatch(id: string, pendingPath: string) {
+    return this.db
+      .updateTable('device_mount')
+      .set({ pendingPath })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /** Clears a pending match, whether because it was confirmed (and relinked) or rejected. */
+  @GenerateSql({ params: [DummyValue.UUID] })
+  clearPendingMatch(id: string) {
+    return this.db
+      .updateTable('device_mount')
+      .set({ pendingPath: null })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
 }
