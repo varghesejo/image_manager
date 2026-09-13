@@ -1,8 +1,10 @@
 import {
+  confirmDeviceMount,
   createLibrary,
   deleteLibrary,
   QueueCommand,
   QueueName,
+  rejectDeviceMount,
   runQueueCommandLegacy,
   scanLibrary,
   updateLibrary,
@@ -309,6 +311,39 @@ export const handleEditExclusionPattern = async (library: LibraryResponseDto, ol
   }
 
   return true;
+};
+
+export const handleConfirmDeviceMount = async (libraryId: string, pendingPath: string) => {
+  const $t = await getFormatter();
+
+  const confirmed = await modalManager.showDialog({
+    prompt: $t('admin.device_mount_confirm_prompt', { values: { path: pendingPath } }),
+  });
+  if (!confirmed) {
+    return false;
+  }
+
+  try {
+    await confirmDeviceMount({ id: libraryId });
+    toastManager.primary($t('admin.device_mount_confirmed'));
+    return true;
+  } catch (error) {
+    handleError(error, $t('errors.unable_to_confirm_device_mount'));
+    return false;
+  }
+};
+
+export const handleRejectDeviceMount = async (libraryId: string) => {
+  const $t = await getFormatter();
+
+  try {
+    await rejectDeviceMount({ id: libraryId });
+    toastManager.primary($t('admin.device_mount_rejected'));
+    return true;
+  } catch (error) {
+    handleError(error, $t('errors.unable_to_reject_device_mount'));
+    return false;
+  }
 };
 
 const handleDeleteExclusionPattern = async (library: LibraryResponseDto, exclusionPattern: string) => {

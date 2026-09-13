@@ -3,6 +3,7 @@
   import emptyFoldersUrl from '$lib/assets/empty-folders.svg';
   import AdminCard from '$lib/components/AdminCard.svelte';
   import AdminPageLayout from '$lib/components/layouts/AdminPageLayout.svelte';
+  import DeviceMountCard from '$lib/components/library-page/DeviceMountCard.svelte';
   import OnEvents from '$lib/components/OnEvents.svelte';
   import ServerStatisticsCard from '$lib/components/server-statistics/ServerStatisticsCard.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/EmptyPlaceholder.svelte';
@@ -115,6 +116,8 @@
           </tbody>
         </table>
       </AdminCard>
+
+      <DeviceMountCard libraryId={library.id} statusPromise={data.deviceMountPromise} />
     </div>
     {@render children?.()}
   </Container>
